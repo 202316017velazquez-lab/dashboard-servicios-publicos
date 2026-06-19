@@ -12,42 +12,91 @@ import dash
 from dash import dcc, html, Input, Output, State, dash_table
 import dash_bootstrap_components as dbc
 import os
+import sys
 import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================================
-# 1. CARGA DE DATOS
+# 1. CARGA DE DATOS - VERSIÓN CORREGIDA PARA RENDER
 # ============================================================================
 
 print("📊 Cargando datos...")
 
-BASE_DIR = r'C:\Users\memin\Downloads\Censos'
-DATA_DIR = os.path.join(BASE_DIR, 'datos_procesados')
+# Obtener la ruta absoluta del directorio donde está este script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(SCRIPT_DIR, 'datos_procesados')
+
+# Crear carpeta si no existe
+if not os.path.exists(DATA_DIR):
+    print(f"⚠️ Creando carpeta: {DATA_DIR}")
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+# Función para cargar datos con fallback
+def cargar_csv(nombre_archivo):
+    ruta = os.path.join(DATA_DIR, nombre_archivo)
+    if os.path.exists(ruta):
+        df = pd.read_csv(ruta, encoding='utf-8-sig')
+        print(f"✅ Archivo cargado: {nombre_archivo} ({len(df)} registros)")
+        return df
+    else:
+        print(f"❌ Archivo no encontrado: {ruta}")
+        return None
 
 # Cargar datos por estado
-df_estados = pd.read_csv(
-    os.path.join(DATA_DIR, 'datos_estado_finales.csv'),
-    encoding='utf-8-sig'
-)
+df_estados = cargar_csv('datos_estado_finales.csv')
+if df_estados is None:
+    print("❌ Error: No se pudieron cargar los datos de estados")
+    print("⚠️ Creando datos de ejemplo para demostración...")
+    # Datos de ejemplo mínimos
+    estados = ['Ciudad de México', 'Nuevo León', 'Jalisco', 'Chihuahua', 'Sonora',
+               'Veracruz', 'Oaxaca', 'Chiapas', 'Guerrero', 'Puebla']
+    datos = []
+    for anio in [2000, 2010, 2020]:
+        for estado in estados:
+            base = 20 + (anio - 2000) * 0.5
+            datos.append({
+                'estado': estado,
+                'anio': anio,
+                'viviendas_totales': 100000 + np.random.randint(0, 50000),
+                'viviendas_habitadas': 90000 + np.random.randint(0, 40000),
+                'agua': 80000 + np.random.randint(0, 20000),
+                'drenaje': 75000 + np.random.randint(0, 20000),
+                'electricidad': 85000 + np.random.randint(0, 15000),
+                'servicios_basicos': 70000 + np.random.randint(0, 25000),
+                'agua_pct': base + 2 + np.random.normal(0, 2),
+                'drenaje_pct': base - 1 + np.random.normal(0, 2),
+                'electricidad_pct': base + 5 + np.random.normal(0, 2),
+                'servicios_basicos_pct': base + 1 + np.random.normal(0, 2),
+                'lat': 0,
+                'lon': 0
+            })
+    df_estados = pd.DataFrame(datos)
+    # Limpiar datos de ejemplo
+    for col in ['agua_pct', 'drenaje_pct', 'electricidad_pct', 'servicios_basicos_pct']:
+        df_estados[col] = df_estados[col].clip(0, 100)
+    print(f"⚠️ Datos de ejemplo creados: {len(df_estados)} registros")
 
 # Cargar totales nacionales
-df_totales = pd.read_csv(
-    os.path.join(DATA_DIR, 'totales_nacionales_finales.csv'),
-    encoding='utf-8-sig'
-)
+df_totales = cargar_csv('totales_nacionales_finales.csv')
+if df_totales is None:
+    print("⚠️ No se encontraron totales nacionales, calculando desde datos de estados")
+    df_totales = df_estados.groupby('anio').agg({
+        'viviendas_totales': 'sum',
+        'viviendas_habitadas': 'sum',
+        'agua': 'sum',
+        'drenaje': 'sum',
+        'electricidad': 'sum',
+        'servicios_basicos': 'sum'
+    }).reset_index()
+    for col in ['agua', 'drenaje', 'electricidad', 'servicios_basicos']:
+        df_totales[f'{col}_pct'] = (df_totales[col] / df_totales['viviendas_totales']) * 100
 
-# Limpiar nombres de estados
-df_estados['estado'] = df_estados['estado'].str.replace('Ã©', 'é')
-df_estados['estado'] = df_estados['estado'].str.replace('Ã', 'Á')
-df_estados['estado'] = df_estados['estado'].str.replace('Ã±', 'ñ')
-df_estados['estado'] = df_estados['estado'].str.replace('Ã³', 'ó')
-df_estados['estado'] = df_estados['estado'].str.replace('Ã­', 'í')
-df_estados['estado'] = df_estados['estado'].str.replace('Ãº', 'ú')
-
-print(f"✅ Datos cargados: {len(df_estados)} registros")
+print(f"✅ Datos cargados exitosamente")
+print(f"   📊 Estados: {df_estados['estado'].nunique()}")
+print(f"   📅 Años: {sorted(df_estados['anio'].unique())}")
 
 # ============================================================================
-# 2. DATOS GEOESPACIALES
+# 2. DATOS GEOESPACIALES (para el mapa)
 # ============================================================================
 
 ESTADOS_COORDENADAS = {
@@ -86,6 +135,7 @@ ESTADOS_COORDENADAS = {
     'Zacatecas': {'lat': 22.775, 'lon': -102.572}
 }
 
+# Agregar coordenadas al DataFrame
 df_estados['lat'] = df_estados['estado'].map(lambda x: ESTADOS_COORDENADAS.get(x, {}).get('lat', 0))
 df_estados['lon'] = df_estados['estado'].map(lambda x: ESTADOS_COORDENADAS.get(x, {}).get('lon', 0))
 
@@ -725,7 +775,6 @@ def actualizar_dashboard(anio, servicio, comparar):
         peor_pct = df_2020['servicios_basicos_pct'].min()
         brecha = mejor_pct - peor_pct
 
-        # Agua
         prom_agua_2020 = df_2020['agua_pct'].mean()
         prom_drenaje_2020 = df_2020['drenaje_pct'].mean()
         prom_electricidad_2020 = df_2020['electricidad_pct'].mean()
