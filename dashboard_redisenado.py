@@ -1,6 +1,6 @@
 # ============================================================================
-# DASHBOARD REDISEÑADO - SERVICIOS PÚBLICOS EN MÉXICO (2000-2020)
-# ESTRUCTURA CLARA CON PESTAÑAS Y CONCLUSIONES
+# DASHBOARD COMPLETO CON INTRODUCCIÓN Y PREDICCIONES
+# SERVICIOS PÚBLICOS EN MÉXICO (2000-2020)
 # ============================================================================
 
 import pandas as pd
@@ -17,7 +17,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ============================================================================
-# 1. CARGA DE DATOS - VERSIÓN CORREGIDA PARA RENDER
+# 1. CARGA DE DATOS
 # ============================================================================
 
 print("📊 Cargando datos...")
@@ -47,9 +47,12 @@ df_estados = cargar_csv('datos_estado_finales.csv')
 if df_estados is None:
     print("❌ Error: No se pudieron cargar los datos de estados")
     print("⚠️ Creando datos de ejemplo para demostración...")
-    # Datos de ejemplo mínimos
     estados = ['Ciudad de México', 'Nuevo León', 'Jalisco', 'Chihuahua', 'Sonora',
-               'Veracruz', 'Oaxaca', 'Chiapas', 'Guerrero', 'Puebla']
+               'Veracruz', 'Oaxaca', 'Chiapas', 'Guerrero', 'Puebla',
+               'Aguascalientes', 'Baja California', 'Coahuila', 'Colima', 'Durango',
+               'Guanajuato', 'Hidalgo', 'México', 'Michoacán', 'Morelos',
+               'Nayarit', 'Querétaro', 'Quintana Roo', 'San Luis Potosí', 'Sinaloa',
+               'Tabasco', 'Tamaulipas', 'Tlaxcala', 'Yucatán', 'Zacatecas']
     datos = []
     for anio in [2000, 2010, 2020]:
         for estado in estados:
@@ -71,7 +74,6 @@ if df_estados is None:
                 'lon': 0
             })
     df_estados = pd.DataFrame(datos)
-    # Limpiar datos de ejemplo
     for col in ['agua_pct', 'drenaje_pct', 'electricidad_pct', 'servicios_basicos_pct']:
         df_estados[col] = df_estados[col].clip(0, 100)
     print(f"⚠️ Datos de ejemplo creados: {len(df_estados)} registros")
@@ -96,7 +98,7 @@ print(f"   📊 Estados: {df_estados['estado'].nunique()}")
 print(f"   📅 Años: {sorted(df_estados['anio'].unique())}")
 
 # ============================================================================
-# 2. DATOS GEOESPACIALES (para el mapa)
+# 2. DATOS GEOESPACIALES
 # ============================================================================
 
 ESTADOS_COORDENADAS = {
@@ -140,7 +142,79 @@ df_estados['lat'] = df_estados['estado'].map(lambda x: ESTADOS_COORDENADAS.get(x
 df_estados['lon'] = df_estados['estado'].map(lambda x: ESTADOS_COORDENADAS.get(x, {}).get('lon', 0))
 
 # ============================================================================
-# 3. CONFIGURACIÓN
+# 3. CÁLCULO DE PREDICCIONES (TENDENCIAS)
+# ============================================================================
+
+print("📈 Calculando predicciones...")
+
+# Función para calcular predicción lineal simple
+def calcular_prediccion(datos, años_prediccion=10):
+    """Calcula una predicción lineal basada en los datos históricos."""
+    # Obtener años disponibles
+    años_hist = sorted(datos['anio'].unique())
+    
+    # Crear DataFrame con los datos históricos
+    df_hist = datos.groupby('anio')['servicios_basicos_pct'].mean().reset_index()
+    
+    # Realizar regresión lineal simple
+    x = df_hist['anio'].values
+    y = df_hist['servicios_basicos_pct'].values
+    
+    # Calcular pendiente e intercepto
+    n = len(x)
+    x_mean = np.mean(x)
+    y_mean = np.mean(y)
+    
+    # Pendiente (m) = Σ((x - x̄)(y - ȳ)) / Σ((x - x̄)²)
+    numerador = np.sum((x - x_mean) * (y - y_mean))
+    denominador = np.sum((x - x_mean) ** 2)
+    pendiente = numerador / denominador if denominador != 0 else 0
+    
+    # Intercepto (b) = ȳ - m * x̄
+    intercepto = y_mean - pendiente * x_mean
+    
+    # Generar años futuros
+    año_final = años_hist[-1]
+    años_futuro = list(range(año_final + 1, año_final + años_prediccion + 1))
+    
+    # Calcular predicciones
+    predicciones = []
+    for año in años_futuro:
+        valor = pendiente * año + intercepto
+        predicciones.append({
+            'año': año,
+            'prediccion': max(0, min(100, valor))  # Limitar entre 0 y 100
+        })
+    
+    # Calcular métricas de confianza
+    residuos = y - (pendiente * x + intercepto)
+    error_std = np.std(residuos)
+    
+    return {
+        'pendiente': pendiente,
+        'intercepto': intercepto,
+        'predicciones': predicciones,
+        'error_std': error_std,
+        'r2': 1 - (np.sum(residuos**2) / np.sum((y - y_mean)**2)) if np.sum((y - y_mean)**2) != 0 else 0
+    }
+
+# Calcular predicciones para servicios básicos
+prediccion = calcular_prediccion(df_estados, años_prediccion=15)
+
+# Calcular predicciones individuales para cada servicio
+servicios = ['agua', 'drenaje', 'electricidad', 'servicios_basicos']
+predicciones_servicios = {}
+for servicio in servicios:
+    # Crear datos históricos para el servicio
+    df_servicio = df_estados.groupby('anio')[f'{servicio}_pct'].mean().reset_index()
+    df_servicio.columns = ['anio', 'servicios_basicos_pct']
+    pred_serv = calcular_prediccion(df_servicio, años_prediccion=15)
+    predicciones_servicios[servicio] = pred_serv
+
+print("✅ Predicciones calculadas")
+
+# ============================================================================
+# 4. CONFIGURACIÓN
 # ============================================================================
 
 SERVICIOS = {
@@ -158,35 +232,84 @@ COLORS_SERVICIO = {
 }
 
 # ============================================================================
-# 4. INICIALIZAR APP
+# 5. INICIALIZAR APP
 # ============================================================================
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
 
 # ============================================================================
-# 5. LAYOUT DEL DASHBOARD
+# 6. LAYOUT DEL DASHBOARD - CON INTRODUCCIÓN Y PREDICCIONES
 # ============================================================================
 
 app.layout = dbc.Container([
 
     # ========================================================================
-    # HEADER
+    # SECCIÓN DE INTRODUCCIÓN
     # ========================================================================
     dbc.Row([
         dbc.Col([
-            html.H1("🏠 Servicios Públicos en México",
-                   className="text-center text-primary mt-4 mb-1",
-                   style={'fontWeight': 'bold', 'fontSize': '2.5rem'}),
-            html.P("Análisis de la evolución de servicios básicos en viviendas (2000-2020)",
-                  className="text-center text-muted mb-1"),
-            html.P("Fuente: INEGI - Censos de Población y Vivienda",
-                  className="text-center text-muted small mb-4")
+            dbc.Card([
+                dbc.CardBody([
+                    html.H1("🏠 Servicios Públicos en México", 
+                           className="text-center text-primary mb-3",
+                           style={'fontWeight': 'bold', 'fontSize': '2.8rem'}),
+                    html.Hr(),
+                    
+                    # Introducción
+                    html.H4("📋 ¿Qué es este dashboard?", className="text-primary mt-3"),
+                    html.P([
+                        "Este dashboard interactivo presenta un análisis detallado de la ",
+                        html.Strong("evolución de los servicios públicos"),
+                        " en las viviendas de México durante el período 2000-2020, utilizando ",
+                        "datos oficiales de los Censos de Población y Vivienda del INEGI."
+                    ], className="lead"),
+                    
+                    html.H5("🎯 Objetivos del Análisis:", className="mt-3"),
+                    html.Ul([
+                        html.Li("📈 ", html.Strong("Evaluar la evolución"), " de la cobertura de servicios básicos (agua, drenaje, electricidad) en las últimas dos décadas."),
+                        html.Li("🏆 ", html.Strong("Identificar los estados"), " con mejor y peor cobertura de servicios."),
+                        html.Li("📍 ", html.Strong("Analizar la brecha regional"), " entre el norte y el sur-sureste del país."),
+                        html.Li("🔮 ", html.Strong("Proyectar tendencias futuras"), " para estimar cuándo se podría alcanzar la cobertura universal."),
+                        html.Li("📊 ", html.Strong("Visualizar los datos"), " de manera interactiva y comprensible.")
+                    ]),
+                    
+                    html.H5("📊 Datos Utilizados:", className="mt-3"),
+                    html.Ul([
+                        html.Li("📅 ", html.Strong("Censo 2000"), f" - {df_estados[df_estados['anio']==2000]['estado'].nunique()} estados analizados"),
+                        html.Li("📅 ", html.Strong("Censo 2010"), f" - {df_estados[df_estados['anio']==2010]['estado'].nunique()} estados analizados"),
+                        html.Li("📅 ", html.Strong("Censo 2020"), f" - {df_estados[df_estados['anio']==2020]['estado'].nunique()} estados analizados"),
+                        html.Li("🏠 ", html.Strong(f"Total de viviendas analizadas:"), f" {df_estados['viviendas_totales'].sum():,.0f} (suma de todos los estados)")
+                    ]),
+                    
+                    html.H5("🔍 ¿Cómo usar este dashboard?", className="mt-3"),
+                    html.P([
+                        "1. Utiliza los ", html.Strong("filtros"), " en la parte superior para seleccionar el año, servicio y tipo de visualización.",
+                        html.Br(),
+                        "2. Explora las ", html.Strong("pestañas"), " para acceder a diferentes vistas: evolución, mapa, rankings, datos y predicciones.",
+                        html.Br(),
+                        "3. Pasa el ", html.Strong("mouse"), " sobre los gráficos para ver detalles específicos.",
+                        html.Br(),
+                        "4. Consulta la sección de ", html.Strong("Predicciones"), " para conocer las tendencias futuras."
+                    ], className="text-muted"),
+                    
+                    html.H5("⚠️ Nota importante:", className="mt-3 text-warning"),
+                    html.P([
+                        "Todos los porcentajes están calculados con base en ", 
+                        html.Strong("VIVTOT (viviendas totales)"),
+                        ", que incluye todas las viviendas del país (habitadas, deshabitadas y de uso temporal).",
+                        html.Br(),
+                        "Esto asegura que los porcentajes reflejen la cobertura real sobre el total de viviendas.",
+                        html.Br(),
+                        html.Small("Fuente: INEGI - Censos de Población y Vivienda 2000, 2010, 2020", className="text-muted")
+                    ])
+                ])
+            ], className="shadow-sm mb-4")
         ], width=12)
     ]),
 
     # ========================================================================
-    # KPIs (Indicadores Clave)
+    # KPIs
     # ========================================================================
     dbc.Row([
         dbc.Col(dbc.Card([
@@ -270,12 +393,10 @@ app.layout = dbc.Container([
     ]),
 
     # ========================================================================
-    # PESTAÑAS PARA ORGANIZAR LA INFORMACIÓN
+    # PESTAÑAS
     # ========================================================================
     dbc.Tabs([
-        # ================================================================
-        # TAB 1: VISUALIZACIÓN PRINCIPAL
-        # ================================================================
+        # TAB 1: VISUALIZACIÓN
         dbc.Tab([
             dbc.Row([
                 dbc.Col([
@@ -297,9 +418,7 @@ app.layout = dbc.Container([
             ])
         ], label="📊 Visualización", tab_style={'fontWeight': 'bold'}),
 
-        # ================================================================
-        # TAB 2: MAPA DE MÉXICO
-        # ================================================================
+        # TAB 2: MAPA
         dbc.Tab([
             dbc.Row([
                 dbc.Col([
@@ -315,17 +434,13 @@ app.layout = dbc.Container([
             ])
         ], label="🗺️ Mapa", tab_style={'fontWeight': 'bold'}),
 
-        # ================================================================
-        # TAB 3: RANKING Y COMPARATIVAS
-        # ================================================================
+        # TAB 3: RANKINGS
         dbc.Tab([
             dbc.Row([
                 dbc.Col([
                     dbc.Card([
                         dbc.CardBody([
                             html.H5("🏆 Ranking de Estados", className="mb-3"),
-                            html.P("Estados ordenados de mejor a peor cobertura del servicio seleccionado.",
-                                  className="text-muted small mb-3"),
                             dcc.Graph(id='grafico-ranking', config={'responsive': True})
                         ])
                     ], className="shadow-sm mb-3")
@@ -334,8 +449,6 @@ app.layout = dbc.Container([
                     dbc.Card([
                         dbc.CardBody([
                             html.H5("🎯 Perfil Comparativo", className="mb-3"),
-                            html.P("Comparación de todos los servicios entre el mejor y peor estado.",
-                                  className="text-muted small mb-3"),
                             dcc.Graph(id='grafico-radar', config={'responsive': True})
                         ])
                     ], className="shadow-sm")
@@ -346,8 +459,6 @@ app.layout = dbc.Container([
                     dbc.Card([
                         dbc.CardBody([
                             html.H5("📊 Comparativa de Servicios", className="mb-3"),
-                            html.P("Comparación de los 4 servicios a nivel nacional.",
-                                  className="text-muted small mb-3"),
                             dcc.Graph(id='grafico-comparativa', config={'responsive': True})
                         ])
                     ], className="shadow-sm")
@@ -356,8 +467,40 @@ app.layout = dbc.Container([
         ], label="🏆 Rankings", tab_style={'fontWeight': 'bold'}),
 
         # ================================================================
-        # TAB 4: DATOS DETALLADOS
+        # TAB 4: PREDICCIONES (NUEVA)
         # ================================================================
+        dbc.Tab([
+            dbc.Row([
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            html.H5("🔮 Predicciones y Tendencias", className="mb-0 fw-bold")
+                        ]),
+                        dbc.CardBody([
+                            html.P("Estimaciones basadas en la tendencia histórica de los datos (2000-2020).",
+                                  className="text-muted small mb-3"),
+                            
+                            # Gráfico de predicción principal
+                            dcc.Graph(id='grafico-prediccion', config={'responsive': True}),
+                            
+                            html.Hr(),
+                            
+                            # Tabla de predicciones
+                            html.H6("📊 Proyecciones para Servicios Básicos", className="fw-bold mt-3"),
+                            html.Div(id='tabla-predicciones'),
+                            
+                            html.Hr(),
+                            
+                            # Análisis de predicciones
+                            html.H6("📈 Análisis de Tendencias", className="fw-bold mt-3"),
+                            html.Div(id='analisis-predicciones')
+                        ])
+                    ], className="shadow-sm mb-3")
+                ], width=12)
+            ])
+        ], label="🔮 Predicciones", tab_style={'fontWeight': 'bold'}),
+
+        # TAB 5: DATOS
         dbc.Tab([
             dbc.Row([
                 dbc.Col([
@@ -375,9 +518,7 @@ app.layout = dbc.Container([
             ])
         ], label="📋 Datos", tab_style={'fontWeight': 'bold'}),
 
-        # ================================================================
-        # TAB 5: CONCLUSIONES
-        # ================================================================
+        # TAB 6: CONCLUSIONES
         dbc.Tab([
             dbc.Row([
                 dbc.Col([
@@ -408,7 +549,7 @@ app.layout = dbc.Container([
 ], fluid=True, style={'backgroundColor': '#F8F9FA'})
 
 # ============================================================================
-# 6. CALLBACKS
+# 7. CALLBACKS - ACTUALIZACIÓN DE GRÁFICOS
 # ============================================================================
 
 @app.callback(
@@ -426,6 +567,9 @@ app.layout = dbc.Container([
      Output('grafico-ranking', 'figure'),
      Output('grafico-radar', 'figure'),
      Output('grafico-comparativa', 'figure'),
+     Output('grafico-prediccion', 'figure'),
+     Output('tabla-predicciones', 'children'),
+     Output('analisis-predicciones', 'children'),
      Output('tabla-datos', 'children'),
      Output('conclusiones', 'children')],
     [Input('filtro-anio', 'value'),
@@ -470,7 +614,7 @@ def actualizar_dashboard(anio, servicio, comparar):
     desc_basicos = f"{total_basicos:,.0f} viviendas ({total_basicos/total_viv*100:.1f}%)"
 
     # ========================================================================
-    # 2. GRÁFICO PRINCIPAL (según comparar)
+    # 2. GRÁFICO PRINCIPAL
     # ========================================================================
     if comparar == 'evolucion':
         df_evo = df_estados.groupby('anio')[columna_pct].mean().reset_index()
@@ -546,7 +690,7 @@ def actualizar_dashboard(anio, servicio, comparar):
             showlegend=False
         )
 
-    else:  # comparativa
+    else:
         promedios = {}
         for s in ['agua', 'drenaje', 'electricidad', 'servicios_basicos']:
             promedios[SERVICIOS[s]] = df_filtrado[f'{s}_pct'].mean()
@@ -572,7 +716,7 @@ def actualizar_dashboard(anio, servicio, comparar):
         )
 
     # ========================================================================
-    # 3. GRÁFICO SECUNDARIO (Evolución de todos los servicios)
+    # 3. GRÁFICO SECUNDARIO
     # ========================================================================
     df_evo_completa = df_estados.groupby('anio').agg({
         'agua_pct': 'mean',
@@ -606,7 +750,7 @@ def actualizar_dashboard(anio, servicio, comparar):
     )
 
     # ========================================================================
-    # 4. GRÁFICO MAPA (para la pestaña de mapa)
+    # 4. GRÁFICO MAPA
     # ========================================================================
     fig_mapa = px.scatter_mapbox(
         df_filtrado,
@@ -734,7 +878,111 @@ def actualizar_dashboard(anio, servicio, comparar):
     )
 
     # ========================================================================
-    # 8. TABLA DE DATOS
+    # 8. GRÁFICO DE PREDICCIONES
+    # ========================================================================
+    # Crear datos históricos
+    df_hist = df_estados.groupby('anio')['servicios_basicos_pct'].mean().reset_index()
+    
+    # Crear gráfico de predicciones
+    fig_prediccion = go.Figure()
+    
+    # Datos históricos
+    fig_prediccion.add_trace(go.Scatter(
+        x=df_hist['anio'],
+        y=df_hist['servicios_basicos_pct'],
+        mode='lines+markers',
+        name='Datos Históricos',
+        line=dict(width=4, color='#1F77B4'),
+        marker=dict(size=12, color='#1F77B4')
+    ))
+    
+    # Predicciones
+    df_pred = pd.DataFrame(prediccion['predicciones'])
+    fig_prediccion.add_trace(go.Scatter(
+        x=df_pred['año'],
+        y=df_pred['prediccion'],
+        mode='lines+markers',
+        name='Predicción',
+        line=dict(width=4, color='#D62728', dash='dash'),
+        marker=dict(size=12, color='#D62728')
+    ))
+    
+    # Intervalo de confianza (aproximado)
+    fig_prediccion.add_trace(go.Scatter(
+        x=list(df_hist['anio']) + list(df_pred['año'])[::-1],
+        y=list(df_hist['servicios_basicos_pct']) + list(df_pred['prediccion'] + prediccion['error_std'])[::-1],
+        fill='toself',
+        fillcolor='rgba(214, 39, 40, 0.2)',
+        line=dict(color='rgba(255,255,255,0)'),
+        name='Intervalo de Confianza (±1σ)',
+        showlegend=True
+    ))
+    
+    fig_prediccion.update_layout(
+        title='🔮 Predicción de Servicios Básicos (2000-2035)',
+        xaxis_title='Año',
+        yaxis_title='Porcentaje de Viviendas con Servicios Básicos (%)',
+        yaxis=dict(range=[0, 100], gridcolor='rgba(0,0,0,0.1)'),
+        plot_bgcolor='white',
+        height=500,
+        hovermode='x unified',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02)
+    )
+
+    # ========================================================================
+    # 9. TABLA DE PREDICCIONES
+    # ========================================================================
+    df_pred_table = pd.DataFrame(prediccion['predicciones'])
+    df_pred_table['prediccion'] = df_pred_table['prediccion'].round(1)
+    df_pred_table['año'] = df_pred_table['año'].astype(int)
+    
+    tabla_pred = dash_table.DataTable(
+        data=df_pred_table.to_dict('records'),
+        columns=[
+            {'name': 'Año', 'id': 'año'},
+            {'name': 'Predicción (%)', 'id': 'prediccion'}
+        ],
+        style_table={'overflowX': 'auto', 'maxHeight': '300px'},
+        style_header={'backgroundColor': '#2C3E50', 'color': 'white', 'fontWeight': 'bold'},
+        style_cell={'textAlign': 'center', 'padding': '10px'},
+        style_data_conditional=[
+            {'if': {'row_index': 'odd'}, 'backgroundColor': '#F8F9FA'},
+            {'if': {'filter_query': '{prediccion} > 90'}, 'backgroundColor': '#D4EDDA', 'color': '#155724'},
+            {'if': {'filter_query': '{prediccion} < 80'}, 'backgroundColor': '#FFF3CD', 'color': '#856404'}
+        ]
+    )
+
+    # ========================================================================
+    # 10. ANÁLISIS DE PREDICCIONES
+    # ========================================================================
+    años_hist = sorted(df_estados['anio'].unique())
+    año_final = años_hist[-1]
+    
+    # Calcular año estimado para alcanzar 90%
+    año_90 = None
+    for pred in prediccion['predicciones']:
+        if pred['prediccion'] >= 90:
+            año_90 = pred['año']
+            break
+    
+    # Calcular año estimado para alcanzar 95%
+    año_95 = None
+    for pred in prediccion['predicciones']:
+        if pred['prediccion'] >= 95:
+            año_95 = pred['año']
+            break
+    
+    analisis_pred = html.Div([
+        html.P(f"📈 La tendencia actual indica un crecimiento de {prediccion['pendiente']:.2f} puntos porcentuales por año en servicios básicos.", className="mb-2"),
+        html.P(f"📊 El modelo tiene un R² = {prediccion['r2']:.3f} (indica la precisión del ajuste).", className="mb-2"),
+        html.P(f"🎯 Se estima que se alcanzará el 90% de cobertura en el año {año_90 if año_90 else 'más allá de 2035'}.", className="mb-2"),
+        html.P(f"🎯 Se estima que se alcanzará el 95% de cobertura en el año {año_95 if año_95 else 'más allá de 2035'}.", className="mb-2"),
+        html.P(f"⚠️ Al ritmo actual, se necesitarían { (90 - df_hist[df_hist['anio']==año_final]['servicios_basicos_pct'].values[0]) / prediccion['pendiente']:.0f} años adicionales para alcanzar el 90%.", className="mb-2"),
+        html.P("📌 Estas predicciones son estimaciones basadas en la tendencia histórica y no consideran posibles cambios en políticas públicas o inversiones.", className="text-muted small mt-3")
+    ])
+
+    # ========================================================================
+    # 11. TABLA DE DATOS
     # ========================================================================
     tabla_df = df_filtrado[['estado', 'anio', 'viviendas_totales',
                             'agua_pct', 'drenaje_pct', 'electricidad_pct', 'servicios_basicos_pct']].copy()
@@ -758,9 +1006,8 @@ def actualizar_dashboard(anio, servicio, comparar):
     )
 
     # ========================================================================
-    # 9. CONCLUSIONES
+    # 12. CONCLUSIONES
     # ========================================================================
-    # Calcular estadísticas para conclusiones
     df_2020 = df_estados[df_estados['anio'] == 2020]
     df_2000 = df_estados[df_estados['anio'] == 2000]
 
@@ -796,6 +1043,13 @@ def actualizar_dashboard(anio, servicio, comparar):
                 html.Li(f"🏠 Servicios básicos (los 3): {prom_basicos_2020:.1f}% de cobertura")
             ], className="mb-2"),
             
+            html.H6("🔮 Predicciones", className="fw-bold mt-3"),
+            html.Ul([
+                html.Li(f"📈 Crecimiento estimado: {prediccion['pendiente']:.2f} puntos porcentuales por año."),
+                html.Li(f"🎯 90% de cobertura estimado para el año {año_90 if año_90 else 'más allá de 2035'}."),
+                html.Li(f"⚠️ Al ritmo actual, se necesitan { (90 - prom_basicos_2020) / prediccion['pendiente']:.0f} años para alcanzar el 90%.")
+            ], className="mb-2"),
+            
             html.H6("⚠️ Retos Pendientes", className="fw-bold mt-3"),
             html.Ul([
                 html.Li(f"⏳ Al ritmo actual, se necesitarían ~30 años para llegar al 90% de cobertura."),
@@ -820,19 +1074,21 @@ def actualizar_dashboard(anio, servicio, comparar):
             kpi_basicos, desc_basicos,
             fig_principal, fig_secundario,
             fig_mapa, fig_ranking, fig_radar, fig_comparativa,
+            fig_prediccion, tabla_pred, analisis_pred,
             tabla, conclusiones)
 
 # ============================================================================
-# 7. EJECUTAR
+# 8. EJECUTAR
 # ============================================================================
 
 if __name__ == '__main__':
     print("\n" + "="*70)
-    print("🏠 DASHBOARD REDISEÑADO - SERVICIOS PÚBLICOS EN MÉXICO")
+    print("🏠 DASHBOARD CON PREDICCIONES - SERVICIOS PÚBLICOS EN MÉXICO")
     print("="*70)
     print(f"✅ Datos cargados: {len(df_estados)} registros")
     print(f"📅 Años: {sorted(df_estados['anio'].unique())}")
     print(f"🏛️ Estados: {df_estados['estado'].nunique()}")
+    print(f"🔮 Predicciones calculadas para 15 años")
     print("\n" + "="*70)
     print("🌐 El dashboard está disponible en:")
     print("   ➜ http://127.0.0.1:8050")
