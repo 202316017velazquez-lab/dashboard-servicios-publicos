@@ -1,5 +1,5 @@
 # ============================================================================
-# DASHBOARD COMPLETO CON INTRODUCCIÓN Y PREDICCIONES
+# DASHBOARD COMPLETO CON INTRODUCCIÓN Y PREDICCIONES - VERSIÓN CORREGIDA
 # SERVICIOS PÚBLICOS EN MÉXICO (2000-2020)
 # ============================================================================
 
@@ -239,7 +239,7 @@ app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server
 
 # ============================================================================
-# 6. LAYOUT DEL DASHBOARD - CON INTRODUCCIÓN Y PREDICCIONES
+# 6. LAYOUT DEL DASHBOARD - CON INTRODUCCIÓN Y PREDICCIONES (CORREGIDO)
 # ============================================================================
 
 app.layout = dbc.Container([
@@ -266,20 +266,21 @@ app.layout = dbc.Container([
                     ], className="lead"),
                     
                     html.H5("🎯 Objetivos del Análisis:", className="mt-3"),
+                    # CORREGIDO: Usando listas de Dash correctamente
                     html.Ul([
-                        html.Li("📈 ", html.Strong("Evaluar la evolución"), " de la cobertura de servicios básicos (agua, drenaje, electricidad) en las últimas dos décadas."),
-                        html.Li("🏆 ", html.Strong("Identificar los estados"), " con mejor y peor cobertura de servicios."),
-                        html.Li("📍 ", html.Strong("Analizar la brecha regional"), " entre el norte y el sur-sureste del país."),
-                        html.Li("🔮 ", html.Strong("Proyectar tendencias futuras"), " para estimar cuándo se podría alcanzar la cobertura universal."),
-                        html.Li("📊 ", html.Strong("Visualizar los datos"), " de manera interactiva y comprensible.")
+                        html.Li(["📈 ", html.Strong("Evaluar la evolución"), " de la cobertura de servicios básicos (agua, drenaje, electricidad) en las últimas dos décadas."]),
+                        html.Li(["🏆 ", html.Strong("Identificar los estados"), " con mejor y peor cobertura de servicios."]),
+                        html.Li(["📍 ", html.Strong("Analizar la brecha regional"), " entre el norte y el sur-sureste del país."]),
+                        html.Li(["🔮 ", html.Strong("Proyectar tendencias futuras"), " para estimar cuándo se podría alcanzar la cobertura universal."]),
+                        html.Li(["📊 ", html.Strong("Visualizar los datos"), " de manera interactiva y comprensible."])
                     ]),
                     
                     html.H5("📊 Datos Utilizados:", className="mt-3"),
                     html.Ul([
-                        html.Li("📅 ", html.Strong("Censo 2000"), f" - {df_estados[df_estados['anio']==2000]['estado'].nunique()} estados analizados"),
-                        html.Li("📅 ", html.Strong("Censo 2010"), f" - {df_estados[df_estados['anio']==2010]['estado'].nunique()} estados analizados"),
-                        html.Li("📅 ", html.Strong("Censo 2020"), f" - {df_estados[df_estados['anio']==2020]['estado'].nunique()} estados analizados"),
-                        html.Li("🏠 ", html.Strong(f"Total de viviendas analizadas:"), f" {df_estados['viviendas_totales'].sum():,.0f} (suma de todos los estados)")
+                        html.Li(["📅 ", html.Strong("Censo 2000"), f" - {df_estados[df_estados['anio']==2000]['estado'].nunique()} estados analizados"]),
+                        html.Li(["📅 ", html.Strong("Censo 2010"), f" - {df_estados[df_estados['anio']==2010]['estado'].nunique()} estados analizados"]),
+                        html.Li(["📅 ", html.Strong("Censo 2020"), f" - {df_estados[df_estados['anio']==2020]['estado'].nunique()} estados analizados"]),
+                        html.Li(["🏠 ", html.Strong(f"Total de viviendas analizadas:"), f" {df_estados['viviendas_totales'].sum():,.0f} (suma de todos los estados)"])
                     ]),
                     
                     html.H5("🔍 ¿Cómo usar este dashboard?", className="mt-3"),
@@ -467,7 +468,7 @@ app.layout = dbc.Container([
         ], label="🏆 Rankings", tab_style={'fontWeight': 'bold'}),
 
         # ================================================================
-        # TAB 4: PREDICCIONES (NUEVA)
+        # TAB 4: PREDICCIONES
         # ================================================================
         dbc.Tab([
             dbc.Row([
@@ -549,7 +550,7 @@ app.layout = dbc.Container([
 ], fluid=True, style={'backgroundColor': '#F8F9FA'})
 
 # ============================================================================
-# 7. CALLBACKS - ACTUALIZACIÓN DE GRÁFICOS
+# 7. CALLBACKS
 # ============================================================================
 
 @app.callback(
